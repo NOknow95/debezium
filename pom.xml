@@ -156,6 +156,7 @@
         <module>debezium-testing</module>
         <module>debezium-connect-rest-extension</module>
         <module>debezium-schema-generator</module>
+        <module>dbz-demo</module>
     </modules>
 
     <distributionManagement>
