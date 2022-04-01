@@ -108,6 +108,10 @@ public class LogMinerStreamingChangeEventSource implements StreamingChangeEventS
      */
     @Override
     public void execute(ChangeEventSourceContext context, OraclePartition partition, OracleOffsetContext offsetContext) {
+        if (!connectorConfig.getSnapshotMode().shouldStream()) {
+            LOGGER.info("Streaming is disabled for snapshot mode {}", connectorConfig.getSnapshotMode());
+            return;
+        }
         try {
             startScn = offsetContext.getScn();
             snapshotScn = offsetContext.getSnapshotScn();

@@ -1,6 +1,7 @@
 package com.greatdb.dbzdemo;
 
 import cn.hutool.core.io.FileUtil;
+import cn.hutool.json.JSONUtil;
 import io.debezium.engine.ChangeEvent;
 import io.debezium.engine.DebeziumEngine;
 import io.debezium.engine.format.Json;
@@ -25,28 +26,28 @@ public class OracleSnapshot {
     public static void main(String[] args) {
         // Define the configuration for the Debezium Engine with MySQL connector...
         final Properties props = new Properties();
-        props.setProperty("name", "engine");
-        props.setProperty("connector.class", "io.debezium.connector.mysql.MySqlConnector");
+        props.setProperty("name", "oracle-engine");
+        props.setProperty("connector.class", "io.debezium.connector.oracle.OracleConnector");
         props.setProperty("offset.storage", "org.apache.kafka.connect.storage.FileOffsetBackingStore");
         props.setProperty("offset.storage.file.filename", "./dbz-demo/tmp/offsets.txt");
         props.setProperty("offset.flush.interval.ms", "60000");
         /* begin connector properties */
         props.setProperty("database.hostname", "tmg");
-        props.setProperty("database.port", "3306");
-        props.setProperty("database.user", "mysqluser");
-        props.setProperty("database.password", "mysqlpw");
-        props.setProperty("database.server.id", "85744");
-        props.setProperty("database.server.name", "my-app-connector");
+        props.setProperty("database.port", "1521");
+        props.setProperty("database.user", "c##dbzuser");
+        props.setProperty("database.password", "dbz");
+        props.setProperty("database.dbname", "ORCLCDB");
+        props.setProperty("database.server.name", "oracle-server");
+        props.setProperty("tasks.max", "1");
+        props.setProperty("database.pdb.name", "ORCLPDB1");
+        props.setProperty("database.connection.adapter", "logminer");
+
         props.setProperty("database.history", "io.debezium.relational.history.FileDatabaseHistory");
         props.setProperty("database.history.file.filename", "./dbz-demo/tmp/dbhistory.txt");
 
-        props.setProperty("database.include.list", "inventory");
-        props.setProperty("table.include.list", "inventory.customers,inventory.user");
-
+        props.setProperty("table.include.list", "C##DBZUSER.CUSTOMERS,C##DBZUSER.STU");
+        
         props.setProperty("snapshot.mode", "initial");
-
-
-//        props.setProperty("snapshot.mode", "initial_cache");
 //        props.setProperty("snapshot.mode", "initial_only");
 //        props.setProperty("snapshot.mode", "when_needed");
 //        props.setProperty("snapshot.mode", "never");
@@ -70,12 +71,7 @@ public class OracleSnapshot {
 //                    committer.markBatchFinished();
 //                })
                 .notifying(record -> {
-                    System.out.println("--------------------record----------------------");
-                    System.out.println("key====>" + record.key());
-                    System.out.println("val====>" + record.value());
-//                    System.out.println("key====>" + JSONUtil.formatJsonStr(record.key()));
-//                    String payload = ((JSONObject) JSONUtil.parse(record.value()).getByPath(".payload")).toStringPretty();
-//                    System.out.println("payload====>" + payload);
+                    log.info("\n--------------------record----------------------\nkey====>{}\nval====>{}", JSONUtil.formatJsonStr(record.key()), JSONUtil.formatJsonStr(record.value()));
                 })
                 .build();
         ExecutorService executor = Executors.newSingleThreadExecutor();

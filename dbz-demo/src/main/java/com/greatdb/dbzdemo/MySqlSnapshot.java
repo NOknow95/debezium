@@ -43,11 +43,8 @@ public class MySqlSnapshot {
         props.setProperty("database.include.list", "inventory");
         props.setProperty("table.include.list", "inventory.customers,inventory.user");
 
-        props.setProperty("snapshot.mode", "initial");
-
-
-//        props.setProperty("snapshot.mode", "initial_cache");
-//        props.setProperty("snapshot.mode", "initial_only");
+//        props.setProperty("snapshot.mode", "initial");
+        props.setProperty("snapshot.mode", "initial_only");
 //        props.setProperty("snapshot.mode", "when_needed");
 //        props.setProperty("snapshot.mode", "never");
 //        props.setProperty("snapshot.mode", "schema_only");
