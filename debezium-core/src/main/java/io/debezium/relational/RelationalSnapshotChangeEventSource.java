@@ -20,6 +20,8 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import io.debezium.event.GlobalEventBus;
+import io.debezium.relational.offset.OffsetEvent;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -330,6 +332,16 @@ public abstract class RelationalSnapshotChangeEventSource<P extends Partition, O
                                           int tableCount)
             throws InterruptedException {
 
+        OffsetEvent<?> offsetEvent;
+        try {
+            offsetEvent = attainTableOffsetEvent(table.id(), snapshotContext, tableOrder);
+        } catch (SQLException e) {
+            throw new ConnectException("Attain offset of table " + table.id() + " failed", e);
+        }
+        if (offsetEvent != null && offsetEvent.valid()) {
+            GlobalEventBus.post(offsetEvent);
+        }
+
         long exportStart = clock.currentTimeInMillis();
         LOGGER.info("Exporting data from table '{}' ({} of {} tables)", table.id(), tableOrder, tableCount);
 
@@ -379,18 +391,24 @@ public abstract class RelationalSnapshotChangeEventSource<P extends Partition, O
                     }
                     dispatcher.dispatchSnapshotEvent(table.id(), getChangeRecordEmitter(snapshotContext, table.id(), row), snapshotReceiver);
                 }
-            }
-            else if (snapshotContext.lastTable) {
+            } else if (snapshotContext.lastTable) {
                 lastSnapshotRecord(snapshotContext);
             }
 
             LOGGER.info("\t Finished exporting {} records for table '{}'; total duration '{}'", rows,
                     table.id(), Strings.duration(clock.currentTimeInMillis() - exportStart));
             snapshotProgressListener.dataCollectionSnapshotCompleted(table.id(), rows);
-        }
-        catch (SQLException e) {
+
+            if (offsetEvent != null && offsetEvent.valid()) {
+                GlobalEventBus.post(offsetEvent.clone(OffsetEvent.Type.COMPLETE));
+            }
+        } catch (SQLException e) {
             throw new ConnectException("Snapshotting of table " + table.id() + " failed", e);
         }
+    }
+
+    protected OffsetEvent<?> attainTableOffsetEvent(TableId tableId, RelationalSnapshotContext<P, O> snapshotContext, int tableOrder) throws SQLException {
+        return null;
     }
 
     protected void lastSnapshotRecord(RelationalSnapshotContext<P, O> snapshotContext) {

@@ -1,10 +1,15 @@
 package com.greatdb.dbzdemo;
 
 import cn.hutool.core.io.FileUtil;
+import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
+import com.google.common.eventbus.Subscribe;
+import io.debezium.connector.oracle.offset.OracleOffsetEvent;
 import io.debezium.engine.ChangeEvent;
 import io.debezium.engine.DebeziumEngine;
 import io.debezium.engine.format.Json;
+import io.debezium.event.GlobalEventBus;
+import io.debezium.relational.offset.TableOffsetListener;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
@@ -13,6 +18,7 @@ import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * @author wang.jianwen
@@ -30,7 +36,7 @@ public class OracleSnapshot {
         props.setProperty("connector.class", "io.debezium.connector.oracle.OracleConnector");
         props.setProperty("offset.storage", "org.apache.kafka.connect.storage.FileOffsetBackingStore");
         props.setProperty("offset.storage.file.filename", "./dbz-demo/tmp/offsets.txt");
-        props.setProperty("offset.flush.interval.ms", "60000");
+        props.setProperty("offset.flush.interval.ms", "2000");
         /* begin connector properties */
         props.setProperty("database.hostname", "tmg");
         props.setProperty("database.port", "1521");
@@ -46,34 +52,53 @@ public class OracleSnapshot {
         props.setProperty("database.history.file.filename", "./dbz-demo/tmp/dbhistory.txt");
 
         props.setProperty("table.include.list", "C##DBZUSER.CUSTOMERS,C##DBZUSER.STU");
-        
-        props.setProperty("snapshot.mode", "initial");
-//        props.setProperty("snapshot.mode", "initial_only");
-//        props.setProperty("snapshot.mode", "when_needed");
-//        props.setProperty("snapshot.mode", "never");
-//        props.setProperty("snapshot.mode", "schema_only");
-//        props.setProperty("snapshot.mode", "schema_only_recovery");
-//        props.setProperty("converter.schemas.enable", "false"); // don't include schema in message
+
+        props.setProperty("snapshot.mode", "initial_only");
+
+        props.setProperty("table.offset.storage", "io.debezium.relational.offset.FileTableOffsetStore");
+        props.setProperty("table.offset.file", "./dbz-demo/tmp/offset_store.txt");
+
+        //props.setProperty("snapshot.mode", "when_needed");
+        //props.setProperty("snapshot.mode", "never");
+        //props.setProperty("snapshot.mode", "schema_only");
+        //props.setProperty("snapshot.mode", "schema_only_recovery");
+        //props.setProperty("converter.schemas.enable", "false"); // don't include schema in message
 
 
+        AtomicInteger i = new AtomicInteger();
         // Create the engine with this configuration ...
         DebeziumEngine<ChangeEvent<String, String>> engine = DebeziumEngine.create(Json.class)
                 .using(props)
-//                .notifying((records, committer) -> {
-//                    for (ChangeEvent<String, String> record : records) {
-//                        String destination = record.destination();
-//                        System.out.println("destination====>" + destination);
-////                        System.out.println("key====>" + (Struct) record.key());
-//                        String payload = ((JSONObject) JSONUtil.parse(record.value()).getByPath(".payload")).toStringPretty();
-//                        System.out.println("payload====>" + payload);
-//                        committer.markProcessed(record);
-//                    }
-//                    committer.markBatchFinished();
-//                })
+                //batch
+                //.notifying((records, committer) -> {
+                //    for (ChangeEvent<String, String> record : records) {
+                //        String payload = ((JSONObject) JSONUtil.parse(record.value()).getByPath(".payload")).toStringPretty();
+                //        System.out.println("payload====>" + payload);
+                //        committer.markProcessed(record);
+                //    }
+                //    committer.markBatchFinished();
+                //})
                 .notifying(record -> {
-                    log.info("\n--------------------record----------------------\nkey====>{}\nval====>{}", JSONUtil.formatJsonStr(record.key()), JSONUtil.formatJsonStr(record.value()));
+                    String payload = ((JSONObject) JSONUtil.parse(record.value()).getByPath(".payload")).toStringPretty();
+                    log.info("\n--------------------record----------------------\nval====>{}", payload);
+                    //String last = JSONUtil.parse(payload).getByPath(".source.snapshot", String.class);
+                    //if ("last".equals(last)) {
+                    //    try {
+                    //        holder.get().close();
+                    //    } catch (IOException e) {
+                    //        log.error("----", e);
+                    //    }
+                    //}
                 })
                 .build();
+
+        GlobalEventBus.register(new TableOffsetListener<OracleOffsetEvent>() {
+            @Override
+            @Subscribe
+            public void handle(OracleOffsetEvent event) {
+                log.info("oracle event:{}", event);
+            }
+        });
         ExecutorService executor = Executors.newSingleThreadExecutor();
         executor.execute(engine);
         addShutdownHook(engine);

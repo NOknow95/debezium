@@ -16,6 +16,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import io.debezium.connector.oracle.offset.OracleOffsetEvent;
+import io.debezium.connector.oracle.offset.OracleTableOffset;
+import io.debezium.relational.offset.OffsetEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -345,6 +348,19 @@ public class OracleSnapshotChangeEventSource extends RelationalSnapshotChangeEve
         if (connectorConfig.getPdbName() != null) {
             jdbcConnection.resetSessionToCdb();
         }
+    }
+
+    @Override
+    protected OffsetEvent<?> attainTableOffsetEvent(TableId tableId, RelationalSnapshotContext<OraclePartition, OracleOffsetContext> snapshotContext, int tableOrder) throws SQLException {
+        OracleTableOffset tableOffset;
+        if (tableOrder == 1) {
+            Scn scn = snapshotContext.offset.getScn();
+            tableOffset = new OracleTableOffset(tableId.toString(), scn);
+        } else {
+            Scn currentScn = jdbcConnection.getCurrentScn();
+            tableOffset = new OracleTableOffset(tableId.toString(), currentScn);
+        }
+        return new OracleOffsetEvent(OffsetEvent.Type.START, tableOffset);
     }
 
     private static String quote(TableId tableId) {

@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
+import io.debezium.util.Pair;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.ConnectException;
@@ -270,8 +271,7 @@ public class MySqlOffsetContext implements OffsetContext {
         if (binlogFilename != null) {
             sourceInfo.setBinlogPosition(binlogFilename, positionOfFirstEvent);
             this.restartBinlogFilename = binlogFilename;
-        }
-        else {
+        } else {
             sourceInfo.setBinlogPosition(sourceInfo.getCurrentBinlogFilename(), positionOfFirstEvent);
         }
         this.restartBinlogPosition = positionOfFirstEvent;
@@ -279,11 +279,15 @@ public class MySqlOffsetContext implements OffsetContext {
         this.restartEventsToSkip = 0;
     }
 
+    public Pair<String, Long> getBinlogPoint() {
+        return Pair.of(this.restartBinlogFilename, this.restartBinlogPosition);
+    }
+
     /**
      * Set the GTID set that captures all of the GTID transactions that have been completely processed.
      *
      * @param gtidSet the string representation of the GTID set; may not be null, but may be an empty string if no GTIDs
-     *            have been previously processed
+     *                have been previously processed
      */
     public void setCompletedGtidSet(String gtidSet) {
         if (gtidSet != null && !gtidSet.trim().isEmpty()) {
