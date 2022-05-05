@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
+import cn.hutool.core.util.StrUtil;
 import org.apache.kafka.common.config.ConfigDef.Importance;
 import org.apache.kafka.common.config.ConfigDef.Type;
 import org.apache.kafka.common.config.ConfigDef.Width;
@@ -721,6 +722,28 @@ public abstract class RelationalDatabaseConnectorConfig extends CommonConnectorC
 
     public Boolean isFullColummnScanRequired() {
         return getConfig().getBoolean(SNAPSHOT_FULL_COLUMN_SCAN_FORCE);
+    }
+
+    public boolean getChunkSwitch() {
+        return getConfig().getBoolean("snapshot.chunk.switch", true);
+    }
+
+    public boolean getTableChunkSwitch(TableId tableId) {
+        return getConfig().getBoolean("snapshot.chunk.switch." + getTableIdMapper().toString(tableId), true);
+    }
+
+    public String getTableChunkKey(TableId tableId) {
+        return getConfig().getString("snapshot.chunk.key." + getTableIdMapper().toString(tableId));
+    }
+
+    public int getTableChunkSize(TableId tableId) {
+        String tableStr = getTableIdMapper().toString(tableId);
+        return getConfig().getInteger(StrUtil.format("snapshot.chunk.size.{}", tableStr), 16);
+    }
+
+    public int getThreadPoolSize(int size) {
+        int configPullSize = getConfig().getInteger("snapshot.chunk.thread-pool.size", 8);
+        return Math.min(size, configPullSize);
     }
 
     private static int validateColumnBlacklist(Configuration config, Field field, Field.ValidationOutput problems) {

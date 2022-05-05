@@ -9,13 +9,17 @@ import io.debezium.annotation.Immutable;
 import io.debezium.relational.Selectors.TableIdToStringMapper;
 import io.debezium.schema.DataCollectionId;
 
+import java.io.Serializable;
+
 /**
  * Unique identifier for a database table.
  *
  * @author Randall Hauch
  */
 @Immutable
-public final class TableId implements DataCollectionId, Comparable<TableId> {
+public final class TableId implements DataCollectionId, Comparable<TableId>, Serializable {
+
+    private static final long serialVersionUID = 9067892224294720293L;
 
     /**
      * Parse the supplied string, extracting up to the first 3 parts into a TableID.

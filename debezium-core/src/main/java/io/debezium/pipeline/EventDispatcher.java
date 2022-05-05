@@ -10,6 +10,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 import org.apache.kafka.connect.data.Schema;
@@ -428,12 +429,12 @@ public class EventDispatcher<T extends DataCollectionId> {
         private Supplier<DataChangeEvent> bufferedEvent;
 
         @Override
-        public void changeRecord(Partition partition,
-                                 DataCollectionSchema dataCollectionSchema,
-                                 Operation operation,
-                                 Object key, Struct value,
-                                 OffsetContext offsetContext,
-                                 ConnectHeaders headers)
+        public synchronized void changeRecord(Partition partition,
+                                              DataCollectionSchema dataCollectionSchema,
+                                              Operation operation,
+                                              Object key, Struct value,
+                                              OffsetContext offsetContext,
+                                              ConnectHeaders headers)
                 throws InterruptedException {
             Objects.requireNonNull(value, "value must not be null");
 

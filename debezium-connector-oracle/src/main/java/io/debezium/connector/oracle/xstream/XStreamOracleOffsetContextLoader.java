@@ -38,14 +38,15 @@ public class XStreamOracleOffsetContextLoader implements OffsetContext.Loader<Or
         final Scn scn;
         if (lcrPosition != null) {
             scn = LcrPosition.valueOf(lcrPosition).getScn();
-        }
-        else {
+        } else {
             scn = OracleOffsetContext.getScnFromOffsetMapByKey(offset, SourceInfo.SCN_KEY);
         }
 
         final Map<String, Scn> snapshotPendingTransactions = OracleOffsetContext.loadSnapshotPendingTransactions(offset);
         final Scn snapshotScn = OracleOffsetContext.loadSnapshotScn(offset);
-        return new OracleOffsetContext(connectorConfig, scn, lcrPosition, snapshotScn, snapshotPendingTransactions,
+        OracleOffsetContext offsetContext = new OracleOffsetContext(connectorConfig, scn, lcrPosition, snapshotScn, snapshotPendingTransactions,
                 snapshot, snapshotCompleted, TransactionContext.load(offset), SignalBasedIncrementalSnapshotContext.load(offset));
+        offsetContext.getTableOffsets().loadFromOffset(offset);
+        return offsetContext;
     }
 }

@@ -10,7 +10,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
-import io.debezium.util.Pair;
+import cn.hutool.core.lang.Pair;
+import io.debezium.pipeline.spi.BaseOffsetContext;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.ConnectException;
@@ -23,7 +24,7 @@ import io.debezium.pipeline.txmetadata.TransactionContext;
 import io.debezium.relational.TableId;
 import io.debezium.schema.DataCollectionId;
 
-public class MySqlOffsetContext implements OffsetContext {
+public class MySqlOffsetContext extends BaseOffsetContext {
 
     private static final String SNAPSHOT_COMPLETED_KEY = "snapshot_completed";
     public static final String EVENTS_TO_SKIP_OFFSET_KEY = "event";
@@ -75,6 +76,7 @@ public class MySqlOffsetContext implements OffsetContext {
             if (!snapshotCompleted) {
                 offset.put(SourceInfo.SNAPSHOT_KEY, true);
             }
+            getTableOffsets().put2Offset(offset);
         }
         else {
             return incrementalSnapshotContext.store(transactionContext.store(offset));
@@ -191,8 +193,7 @@ public class MySqlOffsetContext implements OffsetContext {
             IncrementalSnapshotContext<TableId> incrementalSnapshotContext;
             if (connectorConfig.isReadOnlyConnection()) {
                 incrementalSnapshotContext = MySqlReadOnlyIncrementalSnapshotContext.load(offset);
-            }
-            else {
+            } else {
                 incrementalSnapshotContext = SignalBasedIncrementalSnapshotContext.load(offset);
             }
             final MySqlOffsetContext offsetContext = new MySqlOffsetContext(snapshot, snapshotCompleted,
@@ -202,6 +203,7 @@ public class MySqlOffsetContext implements OffsetContext {
             offsetContext.setInitialSkips(longOffsetValue(offset, EVENTS_TO_SKIP_OFFSET_KEY),
                     (int) longOffsetValue(offset, SourceInfo.BINLOG_ROW_IN_EVENT_OFFSET_KEY));
             offsetContext.setCompletedGtidSet((String) offset.get(GTID_SET_KEY)); // may be null
+            offsetContext.getTableOffsets().loadFromOffset(offset);
             return offsetContext;
         }
 

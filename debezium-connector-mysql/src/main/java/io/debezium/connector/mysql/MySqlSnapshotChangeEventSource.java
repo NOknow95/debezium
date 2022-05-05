@@ -26,11 +26,9 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import io.debezium.connector.mysql.offset.MysqlOffsetEvent;
-import io.debezium.connector.mysql.offset.MysqlTableOffset;
-import io.debezium.relational.offset.OffsetEvent;
-import io.debezium.util.Pair;
+import cn.hutool.core.lang.Pair;
 import org.apache.kafka.connect.data.Struct;
+import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -402,29 +400,34 @@ public class MySqlSnapshotChangeEventSource extends RelationalSnapshotChangeEven
     }
 
     @Override
-    protected OffsetEvent<?> attainTableOffsetEvent(TableId tableId, RelationalSnapshotContext<MySqlPartition, MySqlOffsetContext> snapshotContext, int tableOrder) throws SQLException {
-        MysqlTableOffset tableOffset;
+    protected void attainTableOffsetEvent(TableId tableId, RelationalSnapshotContext<MySqlPartition, MySqlOffsetContext> snapshotContext, int tableOrder) {
+        AtomicReference<String> binlogFilename = new AtomicReference<>();
+        AtomicReference<Long> binlogPosition = new AtomicReference<>();
+        AtomicReference<String> gtId = new AtomicReference<>();
         if (tableOrder == 1) {
             MySqlOffsetContext offsetContext = snapshotContext.offset;
             Pair<String, Long> binlogPoint = offsetContext.getBinlogPoint();
-            tableOffset = new MysqlTableOffset(tableId.toString(), binlogPoint.left(), binlogPoint.right(), offsetContext.gtidSet());
+            binlogFilename.set(binlogPoint.getKey());
+            binlogPosition.set(binlogPoint.getValue());
+            gtId.set(offsetContext.gtidSet());
         } else {
-            AtomicReference<String> binlogFilename = new AtomicReference<>();
-            AtomicReference<Long> binlogPosition = new AtomicReference<>();
-            AtomicReference<String> gtId = new AtomicReference<>();
-
-            queryPosition((bf, bp) -> {
-                binlogFilename.set(bf);
-                binlogPosition.set(bp);
-            }, gtid -> {
-                if (gtid != null && !gtid.trim().isEmpty()) {
-                    String trimmedGtidSet = gtid.replaceAll("\n", "").replaceAll("\r", "");
-                    gtId.set(trimmedGtidSet);
-                }
-            });
-            tableOffset = new MysqlTableOffset(tableId.toString(), binlogFilename.get(), binlogPosition.get(), gtId.get());
+            try {
+                queryPosition((bf, bp) -> {
+                    binlogFilename.set(bf);
+                    binlogPosition.set(bp);
+                }, gtid -> {
+                    if (gtid != null && !gtid.trim().isEmpty()) {
+                        String trimmedGtidSet = gtid.replaceAll("\n", "").replaceAll("\r", "");
+                        gtId.set(trimmedGtidSet);
+                    }
+                });
+            } catch (SQLException e) {
+                throw new ConnectException("Failed to attain binlog position of table:" + tableId, e);
+            }
         }
-        return new MysqlOffsetEvent(OffsetEvent.Type.START, tableOffset);
+        snapshotContext.offset.getTableOffsets().putLogPosition(tableId, "binlogFilename", binlogFilename.get());
+        snapshotContext.offset.getTableOffsets().putLogPosition(tableId, "binlogPosition", binlogPosition.get().toString());
+        snapshotContext.offset.getTableOffsets().putLogPosition(tableId, "gtId", gtId.get());
     }
 
     private void queryPosition(BiConsumer<String, Long> bc, Consumer<String> g) throws SQLException {

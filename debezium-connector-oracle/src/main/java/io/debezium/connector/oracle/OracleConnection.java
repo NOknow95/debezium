@@ -5,7 +5,11 @@
  */
 package io.debezium.connector.oracle;
 
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.sql.Clob;
+import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -43,6 +47,9 @@ import io.debezium.util.Metronome;
 import io.debezium.util.Strings;
 
 import oracle.jdbc.OracleTypes;
+
+import static io.debezium.config.CommonConnectorConfig.SNAPSHOT_FETCH_SIZE;
+import static io.debezium.connector.oracle.OracleConnectorConfig.PDB_NAME;
 
 public class OracleConnection extends JdbcConnection {
 
@@ -468,6 +475,11 @@ public class OracleConnection extends JdbcConnection {
                 : ConnectorAdapter.parse(config.getString("connection.adapter")).getConnectionUrl();
     }
 
+    @Override
+    protected String getUrlPattern() {
+        return OracleConnection.connectionString(config());
+    }
+
     private static ConnectionFactory resolveConnectionFactory(Configuration config) {
         return JdbcConnection.patternBasedFactory(connectionString(config));
     }
@@ -520,13 +532,31 @@ public class OracleConnection extends JdbcConnection {
     }
 
     @Override
+    public String quotedTableIdString(TableId tableId) {
+        return TableId.parse(tableId.schema() + "." + tableId.table(), true).toDoubleQuotedString();
+    }
+
+    @Override
+    protected Connection wrapPoolConnection(Connection connection) {
+        Object proxyConnection = Proxy.newProxyInstance(this.getClass().getClassLoader(), connection.getClass().getInterfaces(), (proxy, method, args) -> {
+            Object r = method.invoke(connection, args);
+            if (r instanceof Statement) {
+                Statement statement = (Statement) r;
+                String pdbName = config.getString("pdb.name");
+                statement.execute("alter session set container=" + pdbName);
+            }
+            return r;
+        });
+        return (Connection) proxyConnection;
+    }
+
+    @Override
     protected ColumnEditor overrideColumn(ColumnEditor column) {
         // This allows the column state to be overridden before default-value resolution so that the
         // output of the default value is within the same precision as that of the column values.
         if (OracleTypes.TIMESTAMP == column.jdbcType()) {
             column.length(column.scale().orElse(Column.UNSET_INT_VALUE)).scale(null);
-        }
-        else if (OracleTypes.NUMBER == column.jdbcType()) {
+        } else if (OracleTypes.NUMBER == column.jdbcType()) {
             column.scale().filter(s -> s == ORACLE_UNSET_SCALE).ifPresent(s -> column.scale(null));
         }
         return column;

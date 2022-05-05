@@ -465,14 +465,18 @@ public class MySqlConnection extends JdbcConnection {
                 }
                 return charsets;
             });
-        }
-        catch (SQLException e) {
+        } catch (SQLException e) {
             throw new DebeziumException("Error reading default database charsets: " + e.getMessage(), e);
         }
     }
 
     public String connectionString() {
         return connectionString(URL_PATTERN);
+    }
+
+    @Override
+    protected String getUrlPattern() {
+        return URL_PATTERN;
     }
 
     public static class MySqlConnectionConfiguration {

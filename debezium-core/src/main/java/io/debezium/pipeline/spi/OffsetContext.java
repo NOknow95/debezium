@@ -8,6 +8,7 @@ package io.debezium.pipeline.spi;
 import java.time.Instant;
 import java.util.Map;
 
+import io.debezium.chunk.TableOffsets;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
 
@@ -22,9 +23,12 @@ import io.debezium.schema.DataCollectionId;
  * Kafka and in the source info block contained within CDC messages themselves.
  *
  * @author Gunnar Morling
- *
  */
 public interface OffsetContext {
+
+    default TableOffsets getTableOffsets() {
+        return new TableOffsets();
+    }
 
     /**
      * Implementations load a connector-specific offset context based on the offset values stored in Kafka.

@@ -3,14 +3,9 @@ package com.greatdb.dbzdemo;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
-import com.google.common.eventbus.Subscribe;
-import io.debezium.connector.mysql.offset.MysqlOffsetEvent;
 import io.debezium.engine.ChangeEvent;
 import io.debezium.engine.DebeziumEngine;
 import io.debezium.engine.format.Json;
-import io.debezium.event.GlobalEventBus;
-import io.debezium.relational.offset.OffsetEvent;
-import io.debezium.relational.offset.TableOffsetListener;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
@@ -28,6 +23,7 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 public class MySqlSnapshot {
 
+    private static final boolean DELETE_OFFSET = true;
     @SneakyThrows
     public static void main(String[] args) {
         // Define the configuration for the Debezium Engine with MySQL connector...
@@ -35,8 +31,8 @@ public class MySqlSnapshot {
         props.setProperty("name", "mysql-engine");
         props.setProperty("connector.class", "io.debezium.connector.mysql.MySqlConnector");
         props.setProperty("offset.storage", "org.apache.kafka.connect.storage.FileOffsetBackingStore");
-        props.setProperty("offset.storage.file.filename", "./dbz-demo/tmp/offsets.txt");
-        props.setProperty("offset.flush.interval.ms", "60000");
+        props.setProperty("offset.storage.file.filename", "./dbz-demo/tmp/mysql_offsets.txt");
+        props.setProperty("offset.flush.interval.ms", "100");
         /* begin connector properties */
         props.setProperty("database.hostname", "tmg");
         props.setProperty("database.port", "3306");
@@ -45,52 +41,47 @@ public class MySqlSnapshot {
         props.setProperty("database.server.id", "85744");
         props.setProperty("database.server.name", "my-app-connector");
         props.setProperty("database.history", "io.debezium.relational.history.FileDatabaseHistory");
-        props.setProperty("database.history.file.filename", "./dbz-demo/tmp/dbhistory.txt");
+        props.setProperty("database.history.file.filename", "./dbz-demo/tmp/mysql_dbhistory.txt");
 
         props.setProperty("database.include.list", "inventory");
-        props.setProperty("table.include.list", "inventory.customers,inventory.user");
-
-//        props.setProperty("snapshot.mode", "initial");
+        //inventory.user
+        props.setProperty("table.include.list", "inventory.user");
         props.setProperty("snapshot.mode", "initial_only");
 
-        props.setProperty("table.offset.storage", "io.debezium.relational.offset.FileTableOffsetStore");
-        props.setProperty("table.offset.file", "./dbz-demo/tmp/offset_store.txt");
+        //props.setProperty("column.exclude.list", "inventory.user.last_name");
+        props.setProperty("snapshot.chunk.size.inventory.user", "3");
+        props.setProperty("snapshot.chunk.key.inventory.user", "address");
+        props.setProperty("snapshot.chunk.thread-pool.size", "3");
+        //props.setProperty("snapshot.chunk.switch.inventory.user", "false");
 
 //        props.setProperty("converter.schemas.enable", "false"); // don't include schema in message
 
-        // Create the engine with this configuration ...
         DebeziumEngine<ChangeEvent<String, String>> engine = DebeziumEngine.create(Json.class)
-                .using(props).notifying(record -> {
-                    String payload = ((JSONObject) JSONUtil.parse(record.value()).getByPath(".payload")).toStringPretty();
-                    log.info("\n--------------------record----------------------\nval====>{}", payload);
-                    //String last = JSONUtil.parse(payload).getByPath(".source.snapshot", String.class);
-                    //if ("last".equals(last)) {
-                    //    try {
-                    //        holder.get().close();
-                    //    } catch (IOException e) {
-                    //        log.error("----", e);
-                    //    }
-                    //}
-                }).using((success, message, error) -> {
+                .using(props)
+                .notifying((records, committer) -> {
+                    for (ChangeEvent<String, String> record : records) {
+                        String payload = ((JSONObject) JSONUtil.parse(record.value()).getByPath(".payload")).toStringPretty();
+                        if (payload.contains("\"after\": ")) {
+                            log.info("\n--------------------record----------------------\nval====>{}", payload);
+                        }
+                        committer.markProcessed(record);
+                    }
+                    committer.markBatchFinished();
+                })
+                //.notifying(record -> {
+                //    String payload = ((JSONObject) JSONUtil.parse(record.value()).getByPath(".payload")).toStringPretty();
+                //    log.info("\n--------------------record----------------------\nval====>{}", payload);
+                //})
+                .using((success, message, error) -> {
                     // 强烈建议加上此部分的回调代码，方便查看错误信息
                     if (!success && error != null) {
                         // 报错回调
                         System.out.println("----------error------");
-                        System.out.println(message);
-                        //System.out.println(error);
-                        error.printStackTrace();
+                        log.error("", error);
                     }
                 })
                 .build();
 
-        GlobalEventBus.register(new TableOffsetListener<MysqlOffsetEvent>() {
-
-            @Override
-            @Subscribe
-            public void handle(MysqlOffsetEvent event) {
-                log.info("mysql offset_event:{}", event);
-            }
-        });
         ExecutorService executor = Executors.newSingleThreadExecutor();
         executor.execute(engine);
         addShutdownHook(engine);
@@ -102,7 +93,9 @@ public class MySqlSnapshot {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             try {
                 engine.close();
-                FileUtil.del("../../tmp");
+                if (DELETE_OFFSET) {
+                    FileUtil.del("../../tmp");
+                }
             } catch (Exception e) {
                 e.printStackTrace();
             }

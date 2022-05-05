@@ -5,6 +5,8 @@
  */
 package io.debezium.jdbc;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.sql.CallableStatement;
 import java.sql.Connection;
@@ -38,6 +40,7 @@ import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
+import com.zaxxer.hikari.HikariDataSource;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,6 +67,8 @@ import io.debezium.util.Collect;
 import io.debezium.util.ColumnUtils;
 import io.debezium.util.Strings;
 
+import javax.sql.DataSource;
+
 /**
  * A utility that simplifies using a JDBC connection and executing transactions composed of multiple statements.
  *
@@ -72,6 +77,7 @@ import io.debezium.util.Strings;
 @NotThreadSafe
 public class JdbcConnection implements AutoCloseable {
 
+    protected HikariDataSource dataSource = null;
     private static final int WAIT_FOR_CLOSE_SECONDS = 10;
     private static final char STATEMENT_DELIMITER = ';';
     private static final int STATEMENT_CACHE_CAPACITY = 10_000;
@@ -307,7 +313,7 @@ public class JdbcConnection implements AutoCloseable {
         return url;
     }
 
-    private final Configuration config;
+    protected final Configuration config;
     private final ConnectionFactory factory;
     private final Operations initialOps;
     private final String openingQuoteCharacter;
@@ -905,6 +911,44 @@ public class JdbcConnection implements AutoCloseable {
         return conn;
     }
 
+    public synchronized Connection poolConnection() throws SQLException {
+        if (dataSource == null) {
+            initDataSource(config());
+        }
+        return wrapPoolConnection(dataSource.getConnection());
+    }
+
+    protected Connection wrapPoolConnection(Connection connection) {
+        return connection;
+    }
+
+    private void initDataSource(JdbcConfiguration jdbcConfiguration) {
+        String url = connectionString(getUrlPattern());
+        LOGGER.info("init datasource URL: {}", url);
+
+        HikariDataSource ds = new HikariDataSource();
+        ds.setJdbcUrl(url);
+        ds.setUsername(jdbcConfiguration.getUser());
+        ds.setPassword(jdbcConfiguration.getPassword());
+        ds.setReadOnly(true);
+        ds.setAutoCommit(false);
+        ds.setMaximumPoolSize(config.getInteger("connection.pool-size", 10));
+        this.dataSource = ds;
+    }
+
+    public synchronized void closeConnectionPool() {
+        if (dataSource != null) {
+            try {
+                dataSource.close();
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    protected String getUrlPattern() {
+        throw new UnsupportedOperationException("Unsupported Database Type");
+    }
+
     protected List<String> parseSqlStatementString(final String statements) {
         final List<String> splitStatements = new ArrayList<>();
         final char[] statementsChars = statements.toCharArray();
@@ -913,13 +957,11 @@ public class JdbcConnection implements AutoCloseable {
             if (statementsChars[i] == STATEMENT_DELIMITER) {
                 if (i == statementsChars.length - 1) {
                     // last character so it is the delimiter
-                }
-                else if (statementsChars[i + 1] == STATEMENT_DELIMITER) {
+                } else if (statementsChars[i + 1] == STATEMENT_DELIMITER) {
                     // two semicolons in a row - escaped semicolon
                     activeStatement.append(STATEMENT_DELIMITER);
                     i++;
-                }
-                else {
+                } else {
                     // semicolon as a delimiter
                     final String trimmedStatement = activeStatement.toString().trim();
                     if (!trimmedStatement.isEmpty()) {

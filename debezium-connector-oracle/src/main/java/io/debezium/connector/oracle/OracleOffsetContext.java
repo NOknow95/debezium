@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import io.debezium.pipeline.spi.BaseOffsetContext;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
 
@@ -22,7 +23,7 @@ import io.debezium.pipeline.txmetadata.TransactionContext;
 import io.debezium.relational.TableId;
 import io.debezium.schema.DataCollectionId;
 
-public class OracleOffsetContext implements OffsetContext {
+public class OracleOffsetContext extends BaseOffsetContext {
 
     public static final String SNAPSHOT_COMPLETED_KEY = "snapshot_completed";
     public static final String SNAPSHOT_PENDING_TRANSACTIONS_KEY = "snapshot_pending_tx";
@@ -170,6 +171,7 @@ public class OracleOffsetContext implements OffsetContext {
                 offset.put(SNAPSHOT_PENDING_TRANSACTIONS_KEY, encoded);
             }
             offset.put(SNAPSHOT_SCN_KEY, snapshotScn != null ? snapshotScn.toString() : null);
+            getTableOffsets().put2Offset(offset);
 
             return offset;
         }
